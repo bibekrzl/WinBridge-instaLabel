@@ -39,3 +39,6 @@ C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\obj\Debug\net9.0
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\obj\Debug\net9.0-windows\PrintServer.Tray.genruntimeconfig.cache
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\obj\Debug\net9.0-windows\ref\PrintServer.Tray.dll
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\bin\Debug\net9.0-windows\Fleck.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\bin\Debug\net9.0-windows\Microsoft.AspNetCore.Server.Kestrel.Https.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\bin\Debug\net9.0-windows\Microsoft.AspNetCore.Server.Kestrel.Transport.Abstractions.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Tray\obj\Debug\net9.0-windows\PrintServer.Tray.sourcelink.json

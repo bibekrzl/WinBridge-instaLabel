@@ -10,6 +10,11 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
+using System.Collections.Concurrent;
 
 namespace PrintServer.Tray.Forms
 {
@@ -25,6 +30,20 @@ namespace PrintServer.Tray.Forms
         private readonly List<IWebSocketConnection> _wsClients = new();
         private List<string> _printers = new();
         private string _defaultPrinter = string.Empty;
+        private IHost? _httpHost;
+        private readonly ConcurrentQueue<(string Printer, int Width, int Height, string ImageBase64, DateTime Timestamp)> _recentJobs = new();
+        private const int MaxRecentJobs = 10;
+        private struct PrintJob
+        {
+            public Image Image;
+            public string PrinterName;
+            public int WidthMm;
+            public int HeightMm;
+            public DateTime Timestamp;
+        }
+        private readonly ConcurrentQueue<PrintJob> _printQueue = new();
+        private readonly AutoResetEvent _queueEvent = new(false);
+        private bool _printWorkerRunning = true;
 
         public MainForm(IPrintService printService, ILogger<MainForm> logger)
         {
@@ -35,6 +54,8 @@ namespace PrintServer.Tray.Forms
             InitializeTrayIcon();
             InitializeWebServer();
             InitializeWebSocketServer();
+            StartHttpDashboardServer();
+            StartPrintWorker();
         }
 
         private void InitializeComponent()
@@ -55,18 +76,28 @@ namespace PrintServer.Tray.Forms
         private void InitializeTrayIcon()
         {
             _contextMenu = new ContextMenuStrip();
-            _contextMenu.Items.Add("Show/Hide", null, ShowHide_Click);
-            _contextMenu.Items.Add("-");
             _contextMenu.Items.Add("Refresh Printers", null, RefreshPrinters_Click);
             _contextMenu.Items.Add("Test Printers", null, TestPrinters_Click);
             _contextMenu.Items.Add("-");
-            _contextMenu.Items.Add("View Logs", null, ViewLogs_Click);
+            _contextMenu.Items.Add("Open Browser", null, OpenBrowser_Click);
             _contextMenu.Items.Add("-");
             _contextMenu.Items.Add("Exit", null, Exit_Click);
 
+            // Try to load custom icon (PrintBridge.ico in app directory)
+            Icon trayIcon = SystemIcons.Application;
+            try
+            {
+                string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PrintBridge.ico");
+                if (File.Exists(iconPath))
+                {
+                    trayIcon = new Icon(iconPath);
+                }
+            }
+            catch { /* fallback to default icon */ }
+
             _notifyIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = trayIcon,
                 Text = "Print Server",
                 ContextMenuStrip = _contextMenu,
                 Visible = true
@@ -195,11 +226,10 @@ namespace PrintServer.Tray.Forms
             }
         }
 
-        private void ViewLogs_Click(object? sender, EventArgs e)
+        private void OpenBrowser_Click(object? sender, EventArgs e)
         {
             try
             {
-                // Open the web interface in the default browser
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "http://localhost:5000",
@@ -208,8 +238,30 @@ namespace PrintServer.Tray.Forms
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error opening web interface");
-                MessageBox.Show($"Error opening web interface: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _logger.LogError(ex, "Error opening PrintBridge Dashboard");
+                MessageBox.Show($"Error opening dashboard: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void Exit_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                _cancellationTokenSource.Cancel();
+                _webSocketServer?.Dispose();
+                foreach (var ws in _wsClients.ToList())
+                {
+                    ws.Close();
+                }
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+                _printWorkerRunning = false;
+                _queueEvent.Set();
+                Application.Exit();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during application shutdown");
             }
         }
 
@@ -254,6 +306,15 @@ namespace PrintServer.Tray.Forms
                                     int labelWidth = widthProp.GetInt32();
                                     int labelHeight = heightProp.GetInt32();
                                     string imageData = imageProp.GetString() ?? string.Empty;
+                                    string printerName = _defaultPrinter;
+                                    if (doc.RootElement.TryGetProperty("selectedPrinter", out var printerProp))
+                                    {
+                                        string requestedPrinter = printerProp.GetString() ?? string.Empty;
+                                        if (!string.IsNullOrWhiteSpace(requestedPrinter) && _printers.Contains(requestedPrinter))
+                                        {
+                                            printerName = requestedPrinter;
+                                        }
+                                    }
                                     var match = Regex.Match(imageData, @"^data:image/png;base64,(.+)", RegexOptions.IgnoreCase);
                                     string base64Data = match.Success ? match.Groups[1].Value : imageData;
                                     if (string.IsNullOrWhiteSpace(base64Data))
@@ -264,15 +325,8 @@ namespace PrintServer.Tray.Forms
                                     var imageBytes = Convert.FromBase64String(base64Data);
                                     using var ms = new MemoryStream(imageBytes);
                                     using var img = Image.FromStream(ms);
-                                    PrintImage(img, _defaultPrinter, labelWidth, labelHeight, out string printError);
-                                    if (string.IsNullOrEmpty(printError))
-                                    {
-                                        SendPrintSuccessResponse(socket, _defaultPrinter);
-                                    }
-                                    else
-                                    {
-                                        SendPrintErrorResponse(socket, printError);
-                                    }
+                                    EnqueuePrintJob(img, printerName, labelWidth, labelHeight);
+                                    SendPrintSuccessResponse(socket, printerName);
                                     handled = true;
                                 }
                             }
@@ -294,16 +348,8 @@ namespace PrintServer.Tray.Forms
                             var legacyImageBytes = Convert.FromBase64String(legacyBase64Data);
                             using var legacyMs = new MemoryStream(legacyImageBytes);
                             using var legacyImg = Image.FromStream(legacyMs);
-                            // Use default size (56mm x 31mm)
-                            PrintImage(legacyImg, _defaultPrinter, 56, 31, out string legacyPrintError);
-                            if (string.IsNullOrEmpty(legacyPrintError))
-                            {
-                                SendPrintSuccessResponse(socket, _defaultPrinter);
-                            }
-                            else
-                            {
-                                SendPrintErrorResponse(socket, legacyPrintError);
-                            }
+                            EnqueuePrintJob(legacyImg, _defaultPrinter, 56, 31);
+                            SendPrintSuccessResponse(socket, _defaultPrinter);
                         }
                         catch (Exception ex)
                         {
@@ -383,22 +429,28 @@ namespace PrintServer.Tray.Forms
             socket.Send(System.Text.Json.JsonSerializer.Serialize(response));
         }
 
-        private void PrintImage(Image img, string printerName, int widthMm, int heightMm, out string error)
+        private void PrintImage(Image img, string printerName, int widthMm, int heightMm, out string error, bool addToRecent = true, DateTime? timestamp = null)
         {
             error = string.Empty;
             try
             {
                 using PrintDocument pd = new PrintDocument();
                 pd.PrinterSettings.PrinterName = printerName;
-                // Set custom paper size: widthMm x heightMm (1 inch = 25.4mm)
                 var paperSize = new PaperSize("Label", (int)(widthMm / 25.4 * 100), (int)(heightMm / 25.4 * 100));
                 pd.DefaultPageSettings.PaperSize = paperSize;
                 pd.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
                 pd.PrintPage += (s, e) =>
                 {
-                    // Draw the image scaled to fit the label
                     e.Graphics.DrawImage(img, e.MarginBounds);
                 };
+                if (addToRecent)
+                {
+                    using var ms = new MemoryStream();
+                    img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    string imgBase64 = Convert.ToBase64String(ms.ToArray());
+                    _recentJobs.Enqueue((printerName, widthMm, heightMm, imgBase64, timestamp ?? DateTime.Now));
+                    while (_recentJobs.Count > MaxRecentJobs && _recentJobs.TryDequeue(out _)) { }
+                }
                 pd.Print();
             }
             catch (Exception ex)
@@ -407,30 +459,136 @@ namespace PrintServer.Tray.Forms
             }
         }
 
-        private void Exit_Click(object? sender, EventArgs e)
+        private void StartHttpDashboardServer()
         {
-            try
-            {
-                _cancellationTokenSource.Cancel();
-                _webSocketServer?.Dispose();
-                foreach (var ws in _wsClients.ToList())
+            _httpHost = Host.CreateDefaultBuilder()
+                .ConfigureWebHostDefaults(webBuilder =>
                 {
-                    ws.Close();
-                }
-                _notifyIcon.Visible = false;
-                _notifyIcon.Dispose();
-                Application.Exit();
-            }
-            catch (Exception ex)
+                    webBuilder.UseUrls("http://localhost:5000");
+                    webBuilder.Configure(app =>
+                    {
+                        app.UseRouting();
+                        app.UseEndpoints(endpoints =>
+                        {
+                            endpoints.MapGet("/api/printers", async context =>
+                            {
+                                var printers = _printers.Select(p => new { name = p, isDefault = (p == _defaultPrinter) }).ToList();
+                                await context.Response.WriteAsJsonAsync(new { printers });
+                            });
+                            endpoints.MapGet("/api/jobs", async context =>
+                            {
+                                var jobs = _recentJobs.ToArray().Select(j => new {
+                                    printer = j.Printer,
+                                    width = j.Width,
+                                    height = j.Height,
+                                    imageBase64 = j.ImageBase64,
+                                    timestamp = j.Timestamp
+                                }).ToList();
+                                await context.Response.WriteAsJsonAsync(new { jobs });
+                            });
+                            endpoints.MapGet("/", async context =>
+                            {
+                                context.Response.ContentType = "text/html";
+                                await context.Response.WriteAsync(@"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+<meta charset=""UTF-8"">
+<title>PrintBridge Dashboard</title>
+<style>
+body { font-family: sans-serif; background: #f8f9fa; margin: 0; padding: 0; }
+header { background: #222; color: #fff; padding: 1em; text-align: center; }
+section { max-width: 800px; margin: 2em auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 2em; }
+h2 { margin-top: 0; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 2em; }
+th, td { border: 1px solid #ddd; padding: 0.5em; text-align: left; }
+th { background: #f0f0f0; }
+img { max-width: 180px; max-height: 80px; border: 1px solid #ccc; border-radius: 4px; background: #eee; }
+</style>
+</head>
+<body>
+<header><h1>PrintBridge Dashboard</h1></header>
+<section>
+<h2>Available Printers</h2>
+<table id=""printers""><thead><tr><th>Name</th><th>Default</th></tr></thead><tbody></tbody></table>
+<h2>Recent Print Jobs</h2>
+<table id=""jobs""><thead><tr><th>Printer</th><th>Size (mm)</th><th>Time</th><th>Preview</th></tr></thead><tbody></tbody></table>
+</section>
+<script>
+async function loadPrinters() {
+  const res = await fetch('/api/printers');
+  const data = await res.json();
+  const tbody = document.querySelector('#printers tbody');
+  tbody.innerHTML = '';
+  data.printers.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.isDefault ? '✓' : ''}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+async function loadJobs() {
+  const res = await fetch('/api/jobs');
+  const data = await res.json();
+  const tbody = document.querySelector('#jobs tbody');
+  tbody.innerHTML = '';
+  data.jobs.forEach(j => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${j.printer}</td><td>${j.width} x ${j.height}</td><td>${new Date(j.timestamp).toLocaleString()}</td><td><img src='data:image/png;base64,${j.imageBase64}' /></td>`;
+    tbody.appendChild(tr);
+  });
+}
+loadPrinters();
+loadJobs();
+setInterval(loadPrinters, 5000);
+setInterval(loadJobs, 5000);
+</script>
+</body>
+</html>");
+                            });
+                        });
+                    });
+                })
+                .Build();
+            Task.Run(() => _httpHost.RunAsync());
+        }
+
+        private void StartPrintWorker()
+        {
+            Task.Run(() =>
             {
-                _logger.LogError(ex, "Error during application shutdown");
-            }
+                while (_printWorkerRunning)
+                {
+                    if (_printQueue.TryDequeue(out var job))
+                    {
+                        PrintImage(job.Image, job.PrinterName, job.WidthMm, job.HeightMm, out string error, addToRecent:true, timestamp:job.Timestamp);
+                        job.Image.Dispose();
+                    }
+                    else
+                    {
+                        _queueEvent.WaitOne(100);
+                    }
+                }
+            });
+        }
+
+        private void EnqueuePrintJob(Image img, string printerName, int widthMm, int heightMm)
+        {
+            _printQueue.Enqueue(new PrintJob
+            {
+                Image = (Image)img.Clone(),
+                PrinterName = printerName,
+                WidthMm = widthMm,
+                HeightMm = heightMm,
+                Timestamp = DateTime.Now
+            });
+            _queueEvent.Set();
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                _printWorkerRunning = false;
+                _queueEvent.Set();
                 _cancellationTokenSource?.Dispose();
                 _webSocketServer?.Dispose();
                 foreach (var ws in _wsClients.ToList())

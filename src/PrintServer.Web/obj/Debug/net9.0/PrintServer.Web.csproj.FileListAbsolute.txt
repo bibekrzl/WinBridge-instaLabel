@@ -50,3 +50,4 @@ C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Web\obj\Debug\net9.0\
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Web\obj\Debug\net9.0\PrintServer.Web.pdb
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Web\obj\Debug\net9.0\PrintServer.Web.genruntimeconfig.cache
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Web\obj\Debug\net9.0\ref\PrintServer.Web.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Web\obj\Debug\net9.0\PrintServer.Web.sourcelink.json

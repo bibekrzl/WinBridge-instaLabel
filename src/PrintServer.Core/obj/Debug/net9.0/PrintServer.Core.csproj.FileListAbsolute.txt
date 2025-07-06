@@ -10,3 +10,4 @@ C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net9.0
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net9.0\refint\PrintServer.Core.dll
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net9.0\PrintServer.Core.pdb
 C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net9.0\ref\PrintServer.Core.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net9.0\PrintServer.Core.sourcelink.json
