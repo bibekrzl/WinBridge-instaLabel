@@ -1,0 +1,12 @@
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.csproj.AssemblyReference.cache
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.AssemblyInfoInputs.cache
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.AssemblyInfo.cs
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.csproj.CoreCompileInputs.cache
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\bin\Debug\net7.0\PrintServer.Core.deps.json
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\bin\Debug\net7.0\PrintServer.Core.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\bin\Debug\net7.0\PrintServer.Core.pdb
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\refint\PrintServer.Core.dll
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\PrintServer.Core.pdb
+C:\Users\nup_2\Desktop\instaLabelSDKMethod\src\PrintServer.Core\obj\Debug\net7.0\ref\PrintServer.Core.dll

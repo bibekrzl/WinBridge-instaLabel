@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Munbyn Printer Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .label-preview {
+            width: 224px;
+            height: 124px;
+            border: 2px solid #333;
+            margin: 20px auto;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖨️ Munbyn Printer Test</h1>
+            <p>56mm x 31mm Label Testing</p>
+        </div>
+        
+        <div class="content">
+            <div class="status" id="status"></div>
+
+            <h3>Quick Test</h3>
+            <button class="btn" onclick="printSample()">🖨️ Print Sample Label</button>
+            <button class="btn" onclick="checkStatus()">📊 Check Printer Status</button>
+
+            <hr style="margin: 30px 0;">
+
+            <h3>Custom Label</h3>
+            <div class="form-group">
+                <label for="customText">Label Text:</label>
+                <input type="text" id="customText" value="Hello World!" placeholder="Enter text for the label">
+            </div>
+            
+            <div class="form-group">
+                <label for="comPort">COM Port:</label>
+                <select id="comPort">
+                    <option value="COM3">COM3</option>
+                    <option value="COM4">COM4</option>
+                    <option value="COM5">COM5</option>
+                    <option value="COM6">COM6</option>
+                </select>
+            </div>
+
+            <div class="label-preview" id="labelPreview">
+                56mm x 31mm<br>Label Preview
+            </div>
+
+            <button class="btn" onclick="printCustom()">🖨️ Print Custom Label</button>
+        </div>
+    </div>
+
+    <script>
+        // Update label preview when text changes
+        document.getElementById('customText').addEventListener('input', function() {
+            document.getElementById('labelPreview').textContent = this.value || '56mm x 31mm\nLabel Preview';
+        });
+
+        async function printSample() {
+            try {
+                showStatus('Printing sample label...', 'success');
+                
+                const response = await fetch('/api/munbyn/print-sample', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus('Sample label printed successfully!', 'success');
+                } else {
+                    showStatus('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('Error printing sample label: ' + error.message, 'error');
+            }
+        }
+
+        async function printCustom() {
+            try {
+                const text = document.getElementById('customText').value;
+                const comPort = document.getElementById('comPort').value;
+                
+                if (!text.trim()) {
+                    showStatus('Please enter some text for the label', 'error');
+                    return;
+                }
+                
+                showStatus('Printing custom label...', 'success');
+                
+                const response = await fetch('/api/munbyn/print-custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        comPort: comPort
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus('Custom label printed successfully!', 'success');
+                } else {
+                    showStatus('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('Error printing custom label: ' + error.message, 'error');
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                showStatus('Checking printer status...', 'success');
+                
+                const response = await fetch('/api/munbyn/status');
+                const result = await response.json();
+                
+                if (result.success !== false) {
+                    showStatus(`Printer Status: ${result.status}`, 'success');
+                } else {
+                    showStatus('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('Error checking printer status: ' + error.message, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 

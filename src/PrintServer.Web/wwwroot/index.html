@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Server</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .printers-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .printer-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 3px;
+            border-left: 4px solid #667eea;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖨️ Print Server</h1>
+            <p>Universal Label Printing Solution</p>
+        </div>
+        
+        <div class="content">
+            <div class="status" id="status"></div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing...</p>
+            </div>
+
+            <div class="form-group">
+                <label for="printerSelect">Select Printer:</label>
+                <select id="printerSelect">
+                    <option value="">Loading printers...</option>
+                </select>
+                <button class="btn" onclick="refreshPrinters()" style="margin-top: 10px;">🔄 Refresh Printers</button>
+            </div>
+
+            <div class="form-group">
+                <label for="imageFile">Select Image:</label>
+                <input type="file" id="imageFile" accept="image/*" required>
+            </div>
+
+            <div class="form-group">
+                <label for="jobName">Job Name (optional):</label>
+                <input type="text" id="jobName" placeholder="Enter a name for this print job">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label for="width">Width (mm):</label>
+                    <input type="number" id="width" value="100" min="10" max="500">
+                </div>
+                <div class="form-group">
+                    <label for="height">Height (mm):</label>
+                    <input type="number" id="height" value="50" min="10" max="500">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label for="copies">Copies:</label>
+                    <input type="number" id="copies" value="1" min="1" max="100">
+                </div>
+                <div class="form-group">
+                    <label for="autoCut">Auto Cut:</label>
+                    <select id="autoCut">
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <button class="btn" onclick="printImage()" style="width: 100%;">🖨️ Print Image</button>
+            </div>
+
+            <div class="printers-list" id="printersList" style="display: none;">
+                <h3>Available Printers:</h3>
+                <div id="printersContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load printers on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshPrinters();
+        });
+
+        async function refreshPrinters() {
+            try {
+                showLoading(true);
+                const response = await fetch('/api/print/printers');
+                const printers = await response.json();
+                
+                const select = document.getElementById('printerSelect');
+                select.innerHTML = '<option value="">Select a printer...</option>';
+                
+                printers.forEach(printer => {
+                    const option = document.createElement('option');
+                    option.value = printer;
+                    option.textContent = printer;
+                    select.appendChild(option);
+                });
+
+                // Show printers list
+                const printersContainer = document.getElementById('printersContainer');
+                printersContainer.innerHTML = '';
+                printers.forEach(printer => {
+                    const div = document.createElement('div');
+                    div.className = 'printer-item';
+                    div.innerHTML = `
+                        <strong>${printer}</strong>
+                        <button class="btn" onclick="testPrinter('${printer}')" style="float: right; padding: 5px 10px; font-size: 12px;">Test</button>
+                    `;
+                    printersContainer.appendChild(div);
+                });
+                
+                document.getElementById('printersList').style.display = 'block';
+                showStatus('Printers loaded successfully!', 'success');
+            } catch (error) {
+                console.error('Error loading printers:', error);
+                showStatus('Error loading printers: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function printImage() {
+            const imageFile = document.getElementById('imageFile').files[0];
+            const printerName = document.getElementById('printerSelect').value;
+            
+            if (!imageFile) {
+                showStatus('Please select an image file', 'error');
+                return;
+            }
+            
+            if (!printerName) {
+                showStatus('Please select a printer', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+                
+                const formData = new FormData();
+                formData.append('imageFile', imageFile);
+                formData.append('printerName', printerName);
+                formData.append('jobName', document.getElementById('jobName').value);
+                formData.append('width', document.getElementById('width').value);
+                formData.append('height', document.getElementById('height').value);
+                formData.append('copies', document.getElementById('copies').value);
+                formData.append('autoCut', document.getElementById('autoCut').value);
+
+                const response = await fetch('/api/print/print', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus(`Print job submitted successfully! Job ID: ${result.jobId}`, 'success');
+                } else {
+                    showStatus('Error: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error printing:', error);
+                showStatus('Error printing: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function testPrinter(printerName) {
+            try {
+                const response = await fetch(`/api/print/printers/${encodeURIComponent(printerName)}/test`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus(`Printer test successful for ${printerName}`, 'success');
+                } else {
+                    showStatus(`Printer test failed for ${printerName}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error testing printer:', error);
+                showStatus(`Error testing printer ${printerName}: ` + error.message, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+    </script>
+</body>
+</html> 
